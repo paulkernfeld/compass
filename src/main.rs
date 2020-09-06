@@ -43,6 +43,21 @@ fn block_on<F: Future>(future: F) -> F::Output {
     }
 }
 
+struct Txis(&'static i2c1::RegisterBlock);
+
+impl Future for Txis {
+    type Output = ();
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        if self.0.isr.read().txis().bit_is_clear() {
+            cx.waker().wake_by_ref();
+            Poll::Pending
+        } else {
+            Poll::Ready(())
+        }
+    }
+}
+
 struct Compass(&'static i2c1::RegisterBlock);
 
 impl Stream for Compass {
@@ -59,7 +74,8 @@ impl Stream for Compass {
         });
 
         // Wait until we can send more data
-        while i2c1.isr.read().txis().bit_is_clear() {}
+        // TODO await
+        block_on(Txis(i2c1));
 
         // Send the address of the register that we want to read: OUT_X_H_M
         i2c1.txdr.write(|w| w.txdata().bits(OUT_X_H_M));
