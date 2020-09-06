@@ -79,8 +79,7 @@ impl<F: Fn() -> bool> Future for BoolFuture<F> {
     }
 }
 
-async fn get_compass(i2c1: &'static i2c1::RegisterBlock) {
-// async fn get_compass(i2c1: &'static i2c1::RegisterBlock) -> (i16, i16, i16) {
+async fn get_compass(i2c1: &'static i2c1::RegisterBlock) -> (i16, i16, i16) {
     i2c1.cr2.write(|w| {
         w.start().set_bit();
         w.sadd1().bits(MAGNETOMETER);
@@ -110,7 +109,7 @@ async fn get_compass(i2c1: &'static i2c1::RegisterBlock) {
     let mut buffer = [0u8; 6];
     for byte in &mut buffer {
         // Wait until we have received something
-        BoolFuture(|| i2c1.isr.read().rxne().bit_is_set());
+        BoolFuture(|| i2c1.isr.read().rxne().bit_is_set()).await;
 
         *byte = i2c1.rxdr.read().rxdata().bits();
     }
@@ -127,21 +126,23 @@ async fn get_compass(i2c1: &'static i2c1::RegisterBlock) {
     let y = ((y_h << 8) + y_l) as i16;
     let z = ((z_h << 8) + z_l) as i16;
 
-    (x, y, z);
-    ()
+    (x, y, z)
 }
 
 #[entry]
 fn main() -> ! {
     let (i2c1, mut delay, mut itm) = aux14::init();
 
-    block_on(stream::repeat(()).for_each(|()| {
-        delay.delay_ms(1_000_u16);
-        get_compass(i2c1)
-        // get_compass(i2c1).map(|mag| {
-        //     iprintln!(&mut itm.stim[0], "{:?}", mag);
-        //     ()
-        // })
-    }));
+    // let stim0 = &mut itm.stim[0];
+
+    block_on(
+        stream::repeat(())
+            .then(|()| get_compass(i2c1))
+            .map(|mag| {
+                iprintln!(&mut itm.stim[0], "{:?}", mag);
+                delay.delay_ms(1000_u16);
+            })
+            .for_each(|()| futures::future::ready(())),
+    );
     unreachable!("Because the stream is infinite")
 }
