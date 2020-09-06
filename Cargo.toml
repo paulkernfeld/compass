@@ -1,0 +1,10 @@
+[package]
+authors = ["Jorge Aparicio <jorge@japaric.io>"]
+edition = "2018"
+name = "i2c"
+version = "0.1.0"
+
+[dependencies]
+aux14 = { path = "auxiliary" }
+futures = { version = "0.3.5", default-features = false }
+cooked-waker = { version = "3.0.0", default-features = false }
