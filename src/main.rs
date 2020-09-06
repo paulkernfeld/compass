@@ -2,79 +2,69 @@
 #![no_std]
 
 use aux14::i2c1;
-#[allow(unused_imports)]
-use aux14::{entry, iprint, iprintln, prelude::*};
-use core::future::Future;
-use core::pin::Pin;
-use core::task::{Context, Poll, RawWaker, RawWakerVTable, Waker};
-use futures::future::FutureExt;
+use aux14::{entry, iprintln, prelude::*};
 use futures::stream;
 use futures::stream::StreamExt;
-use futures::Stream;
+
+use inefficient::BoolFuture;
 
 // Slave address
 const MAGNETOMETER: u8 = 0b001_1110;
 
-// Addresses of the magnetometer's registers
+// Addresses of the magnetometer's register that has the magnetic data
 const OUT_X_H_M: u8 = 0x03;
-const IRA_REG_M: u8 = 0x0A;
 
-// https://users.rust-lang.org/t/simplest-possible-block-on/48364/2
-unsafe fn rwclone(_p: *const ()) -> RawWaker {
-    make_raw_waker()
-}
-unsafe fn rwwake(_p: *const ()) {}
-unsafe fn rwwakebyref(_p: *const ()) {}
-unsafe fn rwdrop(_p: *const ()) {}
+/// Inefficient BUT VALID implementations of handy async functions in Rust
+mod inefficient {
+    use core::future::Future;
+    use core::pin::Pin;
+    use core::task::{Context, Poll, RawWaker, RawWakerVTable, Waker};
 
-static VTABLE: RawWakerVTable = RawWakerVTable::new(rwclone, rwwake, rwwakebyref, rwdrop);
+    unsafe fn rwclone(_p: *const ()) -> RawWaker {
+        noop_waker()
+    }
 
-fn make_raw_waker() -> RawWaker {
-    static DATA: () = ();
-    RawWaker::new(&DATA, &VTABLE)
-}
+    unsafe fn rwwake(_p: *const ()) {}
 
-fn block_on<F: Future>(future: F) -> F::Output {
-    pin_utils::pin_mut!(future);
-    let waker = &unsafe { Waker::from_raw(make_raw_waker()) };
-    let mut cx = Context::from_waker(waker);
-    loop {
-        if let Poll::Ready(output) = future.as_mut().poll(&mut cx) {
-            return output;
+    unsafe fn rwwakebyref(_p: *const ()) {}
+
+    unsafe fn rwdrop(_p: *const ()) {}
+
+    static VTABLE: RawWakerVTable = RawWakerVTable::new(rwclone, rwwake, rwwakebyref, rwdrop);
+
+    /// The simplest way to create a noop waker in Rust
+    /// https://users.rust-lang.org/t/simplest-possible-block-on/48364/2
+    pub fn noop_waker() -> RawWaker {
+        static DATA: () = ();
+        RawWaker::new(&DATA, &VTABLE)
+    }
+
+    pub fn block_on<F: Future>(future: F) -> F::Output {
+        pin_utils::pin_mut!(future);
+        let waker = &unsafe { Waker::from_raw(noop_waker()) };
+        let mut cx = Context::from_waker(waker);
+        loop {
+            if let Poll::Ready(output) = future.as_mut().poll(&mut cx) {
+                return output;
+            }
         }
     }
-}
 
-/// Wait until we can send more data
-struct Txis(&'static i2c1::RegisterBlock);
+    /// Convert a function that returns bool into a valid but very inefficient future
+    /// https://users.rust-lang.org/t/polling-in-new-era-futures/30531/2?u=occupy_paul_st
+    /// This will return Ready if and only if the function returns true
+    pub struct BoolFuture<F: Fn() -> bool>(pub F);
 
-impl Future for Txis {
-    type Output = ();
+    impl<F: Fn() -> bool> Future for BoolFuture<F> {
+        type Output = ();
 
-    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        if self.0.isr.read().txis().bit_is_clear() {
-            cx.waker().wake_by_ref();
-            Poll::Pending
-        } else {
-            Poll::Ready(())
-        }
-    }
-}
-
-// Convert a function that returns bool into a valid but very inefficient future
-// https://users.rust-lang.org/t/polling-in-new-era-futures/30531/2?u=occupy_paul_st
-// Wait until the function returns true
-struct BoolFuture<F: Fn() -> bool>(F);
-
-impl<F: Fn() -> bool> Future for BoolFuture<F> {
-    type Output = ();
-
-    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        if self.0() {
-            Poll::Ready(())
-        } else {
-            cx.waker().wake_by_ref();
-            Poll::Pending
+        fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+            if self.0() {
+                Poll::Ready(())
+            } else {
+                cx.waker().wake_by_ref();
+                Poll::Pending
+            }
         }
     }
 }
@@ -133,9 +123,7 @@ async fn get_compass(i2c1: &'static i2c1::RegisterBlock) -> (i16, i16, i16) {
 fn main() -> ! {
     let (i2c1, mut delay, mut itm) = aux14::init();
 
-    // let stim0 = &mut itm.stim[0];
-
-    block_on(
+    inefficient::block_on(
         stream::repeat(())
             .then(|()| get_compass(i2c1))
             .map(|mag| {
