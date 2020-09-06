@@ -5,6 +5,10 @@
 use aux14::{entry, iprint, iprintln, prelude::*};
 use core::future::Future;
 use core::task::{Context, Poll, RawWaker, RawWakerVTable, Waker};
+use futures::Stream;
+use futures::stream::StreamExt;
+use core::pin::Pin;
+use aux14::i2c1;
 
 // Slave address
 const MAGNETOMETER: u8 = 0b001_1110;
@@ -39,15 +43,13 @@ fn block_on<F: Future>(future: F) -> F::Output {
     }
 }
 
-async fn immediate() {}
+struct Compass(&'static i2c1::RegisterBlock);
 
-#[entry]
-fn main() -> ! {
-    let (i2c1, mut delay, mut itm) = aux14::init();
+impl Stream for Compass {
+    type Item = (i16, i16, i16);
 
-    loop {
-        // Broadcast START
-        // Broadcast the MAGNETOMETER address with the R/W bit set to Write
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        let i2c1 = &self.0;
         i2c1.cr2.write(|w| {
             w.start().set_bit();
             w.sadd1().bits(MAGNETOMETER);
@@ -83,8 +85,6 @@ fn main() -> ! {
         }
         // Broadcast STOP (automatic because of `AUTOEND = 1`)
 
-        iprintln!(&mut itm.stim[0], "{:?}", buffer);
-
         let x_h = u16::from(buffer[0]);
         let x_l = u16::from(buffer[1]);
         let z_h = u16::from(buffer[2]);
@@ -96,9 +96,17 @@ fn main() -> ! {
         let y = ((y_h << 8) + y_l) as i16;
         let z = ((z_h << 8) + z_l) as i16;
 
-        iprintln!(&mut itm.stim[0], "{:?}", (x, y, z));
+        Poll::Ready(Some((x, y, z)))
+    }
+}
 
-        block_on(immediate());
+#[entry]
+fn main() -> ! {
+    let (i2c1, mut delay, mut itm) = aux14::init();
+    let mut compass = Compass(i2c1);
+
+    loop {
+        iprintln!(&mut itm.stim[0], "{:?}", block_on(compass.next()));
 
         delay.delay_ms(1_000_u16);
     }
