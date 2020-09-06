@@ -220,6 +220,7 @@ version = "0.1.0"
 dependencies = [
  "aux14",
  "futures",
+ "m",
  "pin-utils",
 ]
 
@@ -243,6 +244,12 @@ dependencies = [
  "embedded-hal",
  "generic-array 0.11.1",
 ]
+
+[[package]]
+name = "m"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9199148efbf3463493dd58c03a921add4623147739b9acd15f339b1dc5bfd677"
 
 [[package]]
 name = "nb"

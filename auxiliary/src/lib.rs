@@ -10,16 +10,17 @@ pub use cortex_m_rt::entry;
 pub use f3::hal::{delay::Delay, prelude, stm32f30x::i2c1};
 
 use cortex_m::peripheral::ITM;
-use f3::{
+pub use f3::{
     hal::{
         i2c::I2c,
         prelude::*,
         stm32f30x::{self, I2C1},
     },
+    led::{Direction, Leds},
     Lsm303dlhc,
 };
 
-pub fn init() -> (&'static i2c1::RegisterBlock, Delay, ITM) {
+pub fn init() -> (Leds, &'static i2c1::RegisterBlock, Delay, ITM) {
     let cp = cortex_m::Peripherals::take().unwrap();
     let dp = stm32f30x::Peripherals::take().unwrap();
 
@@ -27,6 +28,9 @@ pub fn init() -> (&'static i2c1::RegisterBlock, Delay, ITM) {
     let mut rcc = dp.RCC.constrain();
 
     let clocks = rcc.cfgr.freeze(&mut flash.acr);
+
+    let gpioe = dp.GPIOE.split(&mut rcc.ahb);
+    let leds = Leds::new(gpioe);
 
     let mut gpiob = dp.GPIOB.split(&mut rcc.ahb);
     let scl = gpiob.pb6.into_af4(&mut gpiob.moder, &mut gpiob.afrl);
@@ -38,5 +42,5 @@ pub fn init() -> (&'static i2c1::RegisterBlock, Delay, ITM) {
 
     let delay = Delay::new(cp.SYST, clocks);
 
-    unsafe { (&mut *(I2C1::ptr() as *mut _), delay, cp.ITM) }
+    unsafe { (leds, &mut *(I2C1::ptr() as *mut _), delay, cp.ITM) }
 }

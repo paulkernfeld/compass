@@ -2,11 +2,14 @@
 #![no_std]
 
 use aux14::i2c1;
-use aux14::{entry, iprintln, prelude::*};
+use aux14::{entry, iprintln, Direction};
 use futures::stream;
 use futures::stream::StreamExt;
 
+use core::f32::consts::PI;
 use inefficient::BoolFuture;
+// this trait provides the `atan2` method
+use m::Float;
 
 // Slave address
 const MAGNETOMETER: u8 = 0b001_1110;
@@ -131,14 +134,40 @@ async fn get_compass(i2c1: &'static i2c1::RegisterBlock) -> (i16, i16, i16) {
 
 #[entry]
 fn main() -> ! {
-    let (i2c1, mut delay, mut itm) = aux14::init();
+    let (mut leds, i2c1, _delay, mut itm) = aux14::init();
 
     inefficient::block_on(
         stream::repeat(())
             .then(|()| get_compass(i2c1))
             .map(|mag| {
                 iprintln!(&mut itm.stim[0], "{:?}", mag);
-                delay.delay_ms(1000_u16);
+
+                let (x, y, _z) = mag;
+
+                let theta = (y as f32).atan2(x as f32); // in radians
+
+                let dir = if theta < -7. * PI / 8. {
+                    Direction::North
+                } else if theta < -5. * PI / 8. {
+                    Direction::Northwest
+                } else if theta < -3. * PI / 8. {
+                    Direction::West
+                } else if theta < -PI / 8. {
+                    Direction::Southwest
+                } else if theta < PI / 8. {
+                    Direction::South
+                } else if theta < 3. * PI / 8. {
+                    Direction::Southeast
+                } else if theta < 5. * PI / 8. {
+                    Direction::East
+                } else if theta < 7. * PI / 8. {
+                    Direction::Northeast
+                } else {
+                    Direction::North
+                };
+
+                leds.iter_mut().for_each(|led| led.off());
+                leds[dir].on();
             })
             .for_each(|()| futures::future::ready(())),
     );
