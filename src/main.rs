@@ -43,6 +43,7 @@ fn block_on<F: Future>(future: F) -> F::Output {
     }
 }
 
+/// Wait until we can send more data
 struct Txis(&'static i2c1::RegisterBlock);
 
 impl Future for Txis {
@@ -58,6 +59,22 @@ impl Future for Txis {
     }
 }
 
+/// Wait until we can send more data
+struct OptionFuture<T, F: Fn() -> Option<T>>(F);
+
+impl<T, F: Fn() -> Option<T>> Future for OptionFuture<T, F> {
+    type Output = T;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        if let Some(value) = self.0() {
+            Poll::Ready(value)
+        } else {
+            cx.waker().wake_by_ref();
+            Poll::Pending
+        }
+    }
+}
+
 async fn get_compass(i2c1: &'static i2c1::RegisterBlock) -> (i16, i16, i16) {
     i2c1.cr2.write(|w| {
         w.start().set_bit();
@@ -67,14 +84,21 @@ async fn get_compass(i2c1: &'static i2c1::RegisterBlock) -> (i16, i16, i16) {
         w.autoend().clear_bit()
     });
 
-    // Wait until we can send more data
-    Txis(&i2c1).await;
+    OptionFuture(|| if i2c1.isr.read().txis().bit_is_set() {
+        Some(())
+    } else {
+        None
+    }).await;
 
     // Send the address of the register that we want to read: OUT_X_H_M
     i2c1.txdr.write(|w| w.txdata().bits(OUT_X_H_M));
 
     // Wait until the previous byte has been transmitted
-    while i2c1.isr.read().tc().bit_is_clear() {}
+    OptionFuture(|| if i2c1.isr.read().tc().bit_is_set() {
+        Some(())
+    } else {
+        None
+    }).await;
 
     // Broadcast RESTART
     // Broadcast the MAGNETOMETER address with the R/W bit set to Read
