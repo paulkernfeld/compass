@@ -59,22 +59,6 @@ impl Future for Txis {
     }
 }
 
-/// Wait until we can send more data
-struct OptionFuture<T, F: Fn() -> Option<T>>(F);
-
-impl<T, F: Fn() -> Option<T>> Future for OptionFuture<T, F> {
-    type Output = T;
-
-    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        if let Some(value) = self.0() {
-            Poll::Ready(value)
-        } else {
-            cx.waker().wake_by_ref();
-            Poll::Pending
-        }
-    }
-}
-
 // Wait until the function returns true
 struct BoolFuture<F: Fn() -> bool>(F);
 
@@ -100,6 +84,7 @@ async fn get_compass(i2c1: &'static i2c1::RegisterBlock) -> (i16, i16, i16) {
         w.autoend().clear_bit()
     });
 
+    /// Wait until we can send more data
     BoolFuture(|| i2c1.isr.read().txis().bit_is_set()).await;
 
     // Send the address of the register that we want to read: OUT_X_H_M
@@ -138,6 +123,36 @@ async fn get_compass(i2c1: &'static i2c1::RegisterBlock) -> (i16, i16, i16) {
     let z = ((z_h << 8) + z_l) as i16;
 
     (x, y, z)
+}
+
+struct Compass<F: Future> {
+    i2c1: &'static i2c1::RegisterBlock,
+    fut: F
+}
+
+impl<F: Future> Compass<F> {
+    pub fn new(i2c1: &'static i2c1::RegisterBlock) -> Self {
+        Self {
+            i2c1,
+            fut: get_compass(i2c1),
+        }
+    }
+}
+
+impl<F: Future<Output=(i16, i16, i16)>> Stream for Compass<F> {
+    type Item = (i16, i16, i16);
+
+    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        let fut = self.fut.as_mut();
+
+        let res = Future::poll(fut, cx);
+
+        // if res.is_ready() {
+        //     self.fut = get_compass(self.i2c1)
+        // }
+
+        return res
+    }
 }
 
 #[entry]
