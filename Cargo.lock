@@ -61,15 +61,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "cooked-waker"
-version = "3.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dd6ba72298ba889eb596b5eed242c80b0ed669a57bb966f0809cac610e0c3a3d"
-dependencies = [
- "stowaway",
-]
-
-[[package]]
 name = "cortex-m"
 version = "0.5.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -228,8 +219,8 @@ name = "i2c"
 version = "0.1.0"
 dependencies = [
  "aux14",
- "cooked-waker",
  "futures",
+ "pin-utils",
 ]
 
 [[package]]
@@ -337,17 +328,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "rustversion"
-version = "1.0.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b9bdc5e856e51e685846fb6c13a1f5e5432946c2c90501bdc76a1319f19e29da"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn",
-]
-
-[[package]]
 name = "semver"
 version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -392,15 +372,6 @@ dependencies = [
  "nb 0.1.3",
  "stm32f30x",
  "void",
-]
-
-[[package]]
-name = "stowaway"
-version = "2.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ee791080e66da1910a861783eb1fd9aa0823d5aa373c220b3a9c7747179dd1aa"
-dependencies = [
- "rustversion",
 ]
 
 [[package]]
