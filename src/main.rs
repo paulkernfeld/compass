@@ -1,14 +1,16 @@
 #![no_main]
 #![no_std]
 
+use aux14::i2c1;
 #[allow(unused_imports)]
 use aux14::{entry, iprint, iprintln, prelude::*};
 use core::future::Future;
-use core::task::{Context, Poll, RawWaker, RawWakerVTable, Waker};
-use futures::Stream;
-use futures::stream::StreamExt;
 use core::pin::Pin;
-use aux14::i2c1;
+use core::task::{Context, Poll, RawWaker, RawWakerVTable, Waker};
+use futures::future::FutureExt;
+use futures::stream;
+use futures::stream::StreamExt;
+use futures::Stream;
 
 // Slave address
 const MAGNETOMETER: u8 = 0b001_1110;
@@ -17,7 +19,7 @@ const MAGNETOMETER: u8 = 0b001_1110;
 const OUT_X_H_M: u8 = 0x03;
 const IRA_REG_M: u8 = 0x0A;
 
-// https://users.rust-lang.org/t/simplest-possible-block-on/48364/2?u=occupy_paul_st
+// https://users.rust-lang.org/t/simplest-possible-block-on/48364/2
 unsafe fn rwclone(_p: *const ()) -> RawWaker {
     make_raw_waker()
 }
@@ -59,6 +61,8 @@ impl Future for Txis {
     }
 }
 
+// Convert a function that returns bool into a valid but very inefficient future
+// https://users.rust-lang.org/t/polling-in-new-era-futures/30531/2?u=occupy_paul_st
 // Wait until the function returns true
 struct BoolFuture<F: Fn() -> bool>(F);
 
@@ -75,7 +79,8 @@ impl<F: Fn() -> bool> Future for BoolFuture<F> {
     }
 }
 
-async fn get_compass(i2c1: &'static i2c1::RegisterBlock) -> (i16, i16, i16) {
+async fn get_compass(i2c1: &'static i2c1::RegisterBlock) {
+// async fn get_compass(i2c1: &'static i2c1::RegisterBlock) -> (i16, i16, i16) {
     i2c1.cr2.write(|w| {
         w.start().set_bit();
         w.sadd1().bits(MAGNETOMETER);
@@ -84,7 +89,7 @@ async fn get_compass(i2c1: &'static i2c1::RegisterBlock) -> (i16, i16, i16) {
         w.autoend().clear_bit()
     });
 
-    /// Wait until we can send more data
+    // Wait until we can send more data
     BoolFuture(|| i2c1.isr.read().txis().bit_is_set()).await;
 
     // Send the address of the register that we want to read: OUT_X_H_M
@@ -122,46 +127,21 @@ async fn get_compass(i2c1: &'static i2c1::RegisterBlock) -> (i16, i16, i16) {
     let y = ((y_h << 8) + y_l) as i16;
     let z = ((z_h << 8) + z_l) as i16;
 
-    (x, y, z)
-}
-
-struct Compass<F: Future> {
-    i2c1: &'static i2c1::RegisterBlock,
-    fut: F
-}
-
-impl<F: Future> Compass<F> {
-    pub fn new(i2c1: &'static i2c1::RegisterBlock) -> Self {
-        Self {
-            i2c1,
-            fut: get_compass(i2c1),
-        }
-    }
-}
-
-impl<F: Future<Output=(i16, i16, i16)>> Stream for Compass<F> {
-    type Item = (i16, i16, i16);
-
-    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        let fut = self.fut.as_mut();
-
-        let res = Future::poll(fut, cx);
-
-        // if res.is_ready() {
-        //     self.fut = get_compass(self.i2c1)
-        // }
-
-        return res
-    }
+    (x, y, z);
+    ()
 }
 
 #[entry]
 fn main() -> ! {
     let (i2c1, mut delay, mut itm) = aux14::init();
 
-    loop {
-        iprintln!(&mut itm.stim[0], "{:?}", block_on(get_compass(i2c1)));
-
+    block_on(stream::repeat(()).for_each(|()| {
         delay.delay_ms(1_000_u16);
-    }
+        get_compass(i2c1)
+        // get_compass(i2c1).map(|mag| {
+        //     iprintln!(&mut itm.stim[0], "{:?}", mag);
+        //     ()
+        // })
+    }));
+    unreachable!("Because the stream is infinite")
 }
