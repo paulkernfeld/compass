@@ -76,6 +76,9 @@ mod inefficient {
     }
 }
 
+/// It's only legal to call this function once at a time, i.e. you can't call get_compass while
+/// another copy of get_compass is running. Also, in order to leave the I2C bus in a valid state,
+/// you must run this function to completion.
 async fn get_compass(i2c1: &'static i2c1::RegisterBlock) -> (i16, i16, i16) {
     i2c1.cr2.write(|w| {
         w.start().set_bit();
