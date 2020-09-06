@@ -14,7 +14,7 @@ const MAGNETOMETER: u8 = 0b001_1110;
 // Addresses of the magnetometer's register that has the magnetic data
 const OUT_X_H_M: u8 = 0x03;
 
-/// Inefficient BUT VALID implementations of handy async functions in Rust
+/// Inefficient but (I think) valid implementations of handy async functions in Rust
 mod inefficient {
     use core::future::Future;
     use core::pin::Pin;
@@ -32,13 +32,16 @@ mod inefficient {
 
     static VTABLE: RawWakerVTable = RawWakerVTable::new(rwclone, rwwake, rwwakebyref, rwdrop);
 
-    /// The simplest way to create a noop waker in Rust
-    /// https://users.rust-lang.org/t/simplest-possible-block-on/48364/2
-    pub fn noop_waker() -> RawWaker {
+    /// The simplest way to create a noop waker in Rust. You would only ever want to use this with
+    /// an executor that polls continuously. I got this implementation from user 2e71828 on
+    /// [this Rust forum post](https://users.rust-lang.org/t/simplest-possible-block-on/48364/2).
+    fn noop_waker() -> RawWaker {
         static DATA: () = ();
         RawWaker::new(&DATA, &VTABLE)
     }
 
+    /// Continuously poll a future until it returns `Poll::Ready`. This is not normally how an
+    /// executor should work, because it runs the CPU at 100%.
     pub fn block_on<F: Future>(future: F) -> F::Output {
         pin_utils::pin_mut!(future);
         let waker = &unsafe { Waker::from_raw(noop_waker()) };
@@ -50,9 +53,13 @@ mod inefficient {
         }
     }
 
-    /// Convert a function that returns bool into a valid but very inefficient future
-    /// https://users.rust-lang.org/t/polling-in-new-era-futures/30531/2?u=occupy_paul_st
-    /// This will return Ready if and only if the function returns true
+    /// Convert a function that returns bool into a valid but very inefficient future.
+    /// This will return `Poll::Ready` if and only if the function returns true.
+    /// The key trick
+    /// to make this valid is that we always call the waker if we are going to return `Pending`.
+    /// That way the executor is guaranteed to continue polling us. This doesn't actually matter if
+    /// we're using the `block_on` executor from this mod, but it would matter if we used a normal
+    /// executor. I got this trick from user HadrienG in [this Rust forum post](https://users.rust-lang.org/t/polling-in-new-era-futures/30531/2).
     pub struct BoolFuture<F: Fn() -> bool>(pub F);
 
     impl<F: Fn() -> bool> Future for BoolFuture<F> {
