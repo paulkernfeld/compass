@@ -75,6 +75,22 @@ impl<T, F: Fn() -> Option<T>> Future for OptionFuture<T, F> {
     }
 }
 
+// Wait until the function returns true
+struct BoolFuture<F: Fn() -> bool>(F);
+
+impl<F: Fn() -> bool> Future for BoolFuture<F> {
+    type Output = ();
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        if self.0() {
+            Poll::Ready(())
+        } else {
+            cx.waker().wake_by_ref();
+            Poll::Pending
+        }
+    }
+}
+
 async fn get_compass(i2c1: &'static i2c1::RegisterBlock) -> (i16, i16, i16) {
     i2c1.cr2.write(|w| {
         w.start().set_bit();
@@ -84,21 +100,13 @@ async fn get_compass(i2c1: &'static i2c1::RegisterBlock) -> (i16, i16, i16) {
         w.autoend().clear_bit()
     });
 
-    OptionFuture(|| if i2c1.isr.read().txis().bit_is_set() {
-        Some(())
-    } else {
-        None
-    }).await;
+    BoolFuture(|| i2c1.isr.read().txis().bit_is_set()).await;
 
     // Send the address of the register that we want to read: OUT_X_H_M
     i2c1.txdr.write(|w| w.txdata().bits(OUT_X_H_M));
 
     // Wait until the previous byte has been transmitted
-    OptionFuture(|| if i2c1.isr.read().tc().bit_is_set() {
-        Some(())
-    } else {
-        None
-    }).await;
+    BoolFuture(|| i2c1.isr.read().tc().bit_is_set()).await;
 
     // Broadcast RESTART
     // Broadcast the MAGNETOMETER address with the R/W bit set to Read
@@ -112,7 +120,7 @@ async fn get_compass(i2c1: &'static i2c1::RegisterBlock) -> (i16, i16, i16) {
     let mut buffer = [0u8; 6];
     for byte in &mut buffer {
         // Wait until we have received something
-        while i2c1.isr.read().rxne().bit_is_clear() {}
+        BoolFuture(|| i2c1.isr.read().rxne().bit_is_set());
 
         *byte = i2c1.rxdr.read().rxdata().bits();
     }
