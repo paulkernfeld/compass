@@ -2,7 +2,7 @@
 #![no_std]
 
 use aux14::i2c1;
-use aux14::{entry, iprintln, Direction};
+use aux14::{entry, Direction};
 use futures::stream::StreamExt;
 use futures::{stream, Stream};
 
@@ -205,33 +205,37 @@ fn mag_to_direction(mag: (i16, i16, i16)) -> Direction {
 
 #[entry]
 fn main() -> ! {
-    let (mut leds, i2c1, _delay, mut itm) = aux14::init();
+    let (mut leds, i2c1, _delay, _itm) = aux14::init();
     let timer = init_timer();
 
+    let mut timer_cycle = 0usize;
     let mut last_mag = (0, 0, 0);
     inefficient::block_on(
         stream::select(
             get_compass_forever(i2c1).map(Either::Left),
-            delay_forever(20, timer).map(Either::Right),
+            delay_forever(100, timer).map(Either::Right),
         )
         .for_each(|either| {
             match either {
                 Either::Left(mag) => {
-                    iprintln!(&mut itm.stim[0], "{:?}", mag);
-
                     last_mag = mag;
-                    let dir = mag_to_direction(mag);
-
-                    leds.iter_mut().for_each(|led| led.off());
-                    leds[dir].on();
                 }
                 Either::Right(()) => {
-                    let dir = mag_to_direction(last_mag);
-
-                    leds.iter_mut().for_each(|led| led.on());
-                    leds[dir].off();
+                    timer_cycle = (timer_cycle + 1) % 2;
                 }
             }
+
+            let mag_dir = mag_to_direction(last_mag);
+
+            leds.iter_mut().for_each(|led| led.off());
+            leds[mag_dir].on();
+            leds[if timer_cycle == 0 {
+                Direction::North
+            } else {
+                Direction::South
+            }]
+            .on();
+
             futures::future::ready(())
         }),
     );
