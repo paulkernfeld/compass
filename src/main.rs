@@ -177,50 +177,59 @@ fn delay_forever(ms: u16, tim6: &'static tim6::RegisterBlock) -> impl Stream<Ite
     stream::repeat(()).then(move |()| delay(ms, tim6))
 }
 
+fn mag_to_direction(mag: (i16, i16, i16)) -> Direction {
+    let (x, y, _z) = mag;
+
+    let theta = (y as f32).atan2(x as f32); // in radians
+
+    if theta < -7. * PI / 8. {
+        Direction::North
+    } else if theta < -5. * PI / 8. {
+        Direction::Northwest
+    } else if theta < -3. * PI / 8. {
+        Direction::West
+    } else if theta < -PI / 8. {
+        Direction::Southwest
+    } else if theta < PI / 8. {
+        Direction::South
+    } else if theta < 3. * PI / 8. {
+        Direction::Southeast
+    } else if theta < 5. * PI / 8. {
+        Direction::East
+    } else if theta < 7. * PI / 8. {
+        Direction::Northeast
+    } else {
+        Direction::North
+    }
+}
+
 #[entry]
 fn main() -> ! {
     let (mut leds, i2c1, _delay, mut itm) = aux14::init();
     let timer = init_timer();
 
+    let mut last_mag = (0, 0, 0);
     inefficient::block_on(
         stream::select(
             get_compass_forever(i2c1).map(Either::Left),
-            delay_forever(100, timer).map(Either::Right),
+            delay_forever(20, timer).map(Either::Right),
         )
         .for_each(|either| {
             match either {
                 Either::Left(mag) => {
                     iprintln!(&mut itm.stim[0], "{:?}", mag);
 
-                    let (x, y, _z) = mag;
-
-                    let theta = (y as f32).atan2(x as f32); // in radians
-
-                    let dir = if theta < -7. * PI / 8. {
-                        Direction::North
-                    } else if theta < -5. * PI / 8. {
-                        Direction::Northwest
-                    } else if theta < -3. * PI / 8. {
-                        Direction::West
-                    } else if theta < -PI / 8. {
-                        Direction::Southwest
-                    } else if theta < PI / 8. {
-                        Direction::South
-                    } else if theta < 3. * PI / 8. {
-                        Direction::Southeast
-                    } else if theta < 5. * PI / 8. {
-                        Direction::East
-                    } else if theta < 7. * PI / 8. {
-                        Direction::Northeast
-                    } else {
-                        Direction::North
-                    };
+                    last_mag = mag;
+                    let dir = mag_to_direction(mag);
 
                     leds.iter_mut().for_each(|led| led.off());
                     leds[dir].on();
                 }
                 Either::Right(()) => {
+                    let dir = mag_to_direction(last_mag);
+
                     leds.iter_mut().for_each(|led| led.on());
+                    leds[dir].off();
                 }
             }
             futures::future::ready(())
