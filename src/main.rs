@@ -179,6 +179,12 @@ fn main() -> ! {
     let (mut leds, i2c1, _delay, mut itm) = aux14::init();
     let timer = init_timer();
 
+    use rand::{RngCore, SeedableRng};
+    use rand::rngs::SmallRng;
+    let mut rng = SmallRng::seed_from_u64(1337);
+    let x = rng.next_u32();
+    iprintln!(&mut itm.stim[0], "{:?}", x);
+
     let mut position_xy_m = (0.0, 0.0);
     let mut timer_cycle = 0usize;
     let mut last_mag = (0, 0, 0);
@@ -205,7 +211,7 @@ fn main() -> ! {
                             position_xy_m.0 + x * TIMER_S,
                             position_xy_m.1 + y * TIMER_S,
                         );
-                        iprintln!(&mut itm.stim[0], "{:?}", position_xy_m)
+                        // iprintln!(&mut itm.stim[0], "{:?}", position_xy_m)
                     }
                 }
             }
