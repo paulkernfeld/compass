@@ -1,0 +1,1 @@
+This is an embedded program a compass using reactive programming techniques in async Rust. It runs on the STM32F3Discovery board. Large parts of the code are yoink'ed from the [Embedded Rust Discovery book](https://docs.rust-embedded.org/discovery/).
