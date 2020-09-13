@@ -181,7 +181,13 @@ fn main() -> ! {
 
     use rand::{RngCore, SeedableRng};
     use rand::rngs::SmallRng;
-    let mut rng = SmallRng::seed_from_u64(1337);
+
+    let (x, y, z) = spin_on::spin_on(get_compass(i2c1));
+    let mut seed = 0u64;
+    seed += u64::from(u16::from_be_bytes(x.to_be_bytes()));
+    seed += u64::from(u16::from_be_bytes(y.to_be_bytes())) << 16;
+    seed += u64::from(u16::from_be_bytes(z.to_be_bytes())) << 32;
+    let mut rng = SmallRng::seed_from_u64(seed);
     let x = rng.next_u32();
     iprintln!(&mut itm.stim[0], "{:?}", x);
 
