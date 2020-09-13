@@ -2,7 +2,7 @@
 #![no_std]
 
 use aux14::i2c1;
-use aux14::{entry, Direction};
+use aux14::{entry, Direction, iprintln};
 use futures::stream::StreamExt;
 use futures::{stream, Stream};
 
@@ -170,17 +170,22 @@ fn mag_to_direction(mag: (i16, i16, i16)) -> Direction {
     }
 }
 
+const TIMER_MS: u16 = 100;
+const TIMER_S: f32 = 0.1;
+const SPEED: f32 = 1.0;  // TODO
+
 #[entry]
 fn main() -> ! {
-    let (mut leds, i2c1, _delay, _itm) = aux14::init();
+    let (mut leds, i2c1, _delay, mut itm) = aux14::init();
     let timer = init_timer();
 
+    let mut position_xy_m = (0.0, 0.0);
     let mut timer_cycle = 0usize;
     let mut last_mag = (0, 0, 0);
     spin_on::spin_on(
         stream::select(
             get_compass_forever(i2c1).map(Either::Left),
-            delay_forever(100, timer).map(Either::Right),
+            delay_forever(TIMER_MS, timer).map(Either::Right),
         )
         .for_each(|either| {
             match either {
@@ -189,6 +194,19 @@ fn main() -> ! {
                 }
                 Either::Right(()) => {
                     timer_cycle = (timer_cycle + 1) % 2;
+                    let (x, y, _z) = last_mag;
+                    let x = f32::from(x);
+                    let y = f32::from(y);
+                    let norm = (x * x + y * y).sqrt();
+                    if norm < f32::EPSILON {
+                        let x = x / norm;
+                        let y = y / norm;
+                        position_xy_m = (
+                            position_xy_m.0 + x * TIMER_S,
+                            position_xy_m.1 + y * TIMER_S,
+                        );
+                        iprintln!(&mut itm.stim[0], "{:?}", position_xy_m)
+                    }
                 }
             }
 
