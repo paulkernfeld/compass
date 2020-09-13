@@ -11,5 +11,5 @@ f3 = "0.6.1"
 futures = { version = "0.3.5", default-features = false }
 m = "0.1.1"
 pin-utils = "0.1.0"
-spin_on = "0.1.0"
 rand = { version = "0.7.3", features = ["small_rng"], default-features = false }
+spin_on = "0.1.0"

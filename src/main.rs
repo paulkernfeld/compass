@@ -182,6 +182,7 @@ fn main() -> ! {
     use rand::{RngCore, SeedableRng};
     use rand::rngs::SmallRng;
 
+    // Use data from the compass to seed the RNG
     let (x, y, z) = spin_on::spin_on(get_compass(i2c1));
     let mut seed = 0u64;
     seed += u64::from(u16::from_be_bytes(x.to_be_bytes()));
