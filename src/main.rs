@@ -23,40 +23,7 @@ const OUT_X_H_M: u8 = 0x03;
 mod inefficient {
     use core::future::Future;
     use core::pin::Pin;
-    use core::task::{Context, Poll, RawWaker, RawWakerVTable, Waker};
-
-    unsafe fn rwclone(_p: *const ()) -> RawWaker {
-        noop_waker()
-    }
-
-    unsafe fn rwwake(_p: *const ()) {}
-
-    unsafe fn rwwakebyref(_p: *const ()) {}
-
-    unsafe fn rwdrop(_p: *const ()) {}
-
-    static VTABLE: RawWakerVTable = RawWakerVTable::new(rwclone, rwwake, rwwakebyref, rwdrop);
-
-    /// The simplest way to create a noop waker in Rust. You would only ever want to use this with
-    /// an executor that polls continuously. I got this implementation from user 2e71828 on
-    /// [this Rust forum post](https://users.rust-lang.org/t/simplest-possible-block-on/48364/2).
-    fn noop_waker() -> RawWaker {
-        static DATA: () = ();
-        RawWaker::new(&DATA, &VTABLE)
-    }
-
-    /// Continuously poll a future until it returns `Poll::Ready`. This is not normally how an
-    /// executor should work, because it runs the CPU at 100%.
-    pub fn block_on<F: Future>(future: F) -> F::Output {
-        pin_utils::pin_mut!(future);
-        let waker = &unsafe { Waker::from_raw(noop_waker()) };
-        let mut cx = Context::from_waker(waker);
-        loop {
-            if let Poll::Ready(output) = future.as_mut().poll(&mut cx) {
-                return output;
-            }
-        }
-    }
+    use core::task::{Context, Poll};
 
     /// Convert a function that returns bool into a valid but very inefficient future.
     /// This will return `Poll::Ready` if and only if the function returns true.
@@ -210,7 +177,7 @@ fn main() -> ! {
 
     let mut timer_cycle = 0usize;
     let mut last_mag = (0, 0, 0);
-    inefficient::block_on(
+    spin_on::spin_on(
         stream::select(
             get_compass_forever(i2c1).map(Either::Left),
             delay_forever(100, timer).map(Either::Right),
