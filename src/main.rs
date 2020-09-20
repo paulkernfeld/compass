@@ -9,7 +9,7 @@ use futures::{stream, Stream};
 use core::f32::consts::PI;
 use inefficient::BoolFuture;
 // this trait provides the `atan2` method
-use f3::hal::stm32f30x::{rcc, tim6, RCC, TIM6, ITM};
+use f3::hal::stm32f30x::{rcc, tim6, RCC, TIM6};
 use futures::future::Either;
 use m::Float;
 
@@ -176,7 +176,7 @@ fn main() -> ! {
     let (mut leds, i2c1, _delay, mut itm) = aux14::init();
     let timer = init_timer();
 
-    use rand::{RngCore, SeedableRng};
+    use rand::{Rng, SeedableRng};
     use rand::rngs::SmallRng;
 
     // Use data from the compass to seed the RNG
@@ -186,8 +186,8 @@ fn main() -> ! {
     seed += u64::from(u16::from_be_bytes(y.to_be_bytes())) << 16;
     seed += u64::from(u16::from_be_bytes(z.to_be_bytes())) << 32;
     let mut rng = SmallRng::seed_from_u64(seed);
-    let x = rng.next_u32();
-    iprintln!(&mut itm.stim[0], "{:?}", x);
+    let rand_angle = rng.gen::<f32>() * 360.0;
+    iprintln!(&mut itm.stim[0], "Random angle: {:?}", rand_angle);
 
     let mut position_xy_m = (0.0, 0.0);
     let mut timer_cycle = 0usize;
@@ -220,7 +220,7 @@ fn main() -> ! {
                 }
             }
 
-            let angle = (mag_to_angle(last_mag) + 360.0) % 360.0;
+            let angle = (mag_to_angle(last_mag) + 360.0 + rand_angle) % 360.0;
             let mag_dir = angle_to_direction(angle);
 
             leds.iter_mut().for_each(|led| led.off());
