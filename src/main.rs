@@ -144,26 +144,28 @@ fn delay_forever(ms: u16, tim6: &'static tim6::RegisterBlock) -> impl Stream<Ite
     stream::repeat(()).then(move |()| delay(ms, tim6))
 }
 
-fn mag_to_direction(mag: (i16, i16, i16)) -> Direction {
+fn mag_to_angle(mag: (i16, i16, i16)) -> f32 {
     let (x, y, _z) = mag;
 
-    let theta = (y as f32).atan2(x as f32); // in radians
+    (y as f32).atan2(x as f32) // in radians
+}
 
-    if theta < -7. * PI / 8. {
+fn angle_to_direction(angle: f32) -> Direction {
+    if angle < -7. * PI / 8. {
         Direction::North
-    } else if theta < -5. * PI / 8. {
+    } else if angle < -5. * PI / 8. {
         Direction::Northwest
-    } else if theta < -3. * PI / 8. {
+    } else if angle < -3. * PI / 8. {
         Direction::West
-    } else if theta < -PI / 8. {
+    } else if angle < -PI / 8. {
         Direction::Southwest
-    } else if theta < PI / 8. {
+    } else if angle < PI / 8. {
         Direction::South
-    } else if theta < 3. * PI / 8. {
+    } else if angle < 3. * PI / 8. {
         Direction::Southeast
-    } else if theta < 5. * PI / 8. {
+    } else if angle < 5. * PI / 8. {
         Direction::East
-    } else if theta < 7. * PI / 8. {
+    } else if angle < 7. * PI / 8. {
         Direction::Northeast
     } else {
         Direction::North
@@ -223,7 +225,7 @@ fn main() -> ! {
                 }
             }
 
-            let mag_dir = mag_to_direction(last_mag);
+            let mag_dir = angle_to_direction(mag_to_angle(last_mag));
 
             leds.iter_mut().for_each(|led| led.off());
             leds[mag_dir].on();
