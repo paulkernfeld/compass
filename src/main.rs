@@ -9,7 +9,7 @@ use futures::{stream, Stream};
 use core::f32::consts::PI;
 use inefficient::BoolFuture;
 // this trait provides the `atan2` method
-use f3::hal::stm32f30x::{rcc, tim6, RCC, TIM6};
+use f3::hal::stm32f30x::{rcc, tim6, RCC, TIM6, ITM};
 use futures::future::Either;
 use m::Float;
 
@@ -147,34 +147,29 @@ fn delay_forever(ms: u16, tim6: &'static tim6::RegisterBlock) -> impl Stream<Ite
 fn mag_to_angle(mag: (i16, i16, i16)) -> f32 {
     let (x, y, _z) = mag;
 
-    (y as f32).atan2(x as f32) // in radians
+    (y as f32).atan2(x as f32) / PI * 180.0 // in degrees
 }
 
+// Angle in degrees
 fn angle_to_direction(angle: f32) -> Direction {
-    if angle < -7. * PI / 8. {
-        Direction::North
-    } else if angle < -5. * PI / 8. {
-        Direction::Northwest
-    } else if angle < -3. * PI / 8. {
-        Direction::West
-    } else if angle < -PI / 8. {
-        Direction::Southwest
-    } else if angle < PI / 8. {
-        Direction::South
-    } else if angle < 3. * PI / 8. {
-        Direction::Southeast
-    } else if angle < 5. * PI / 8. {
-        Direction::East
-    } else if angle < 7. * PI / 8. {
-        Direction::Northeast
-    } else {
-        Direction::North
+    let angle_chunked = (angle + 22.5) / 45.0;
+    let angle_rounded = angle_chunked as u32;
+    match angle_rounded {
+        0 => Direction::South,
+        1 => Direction::Southeast,
+        2 => Direction::East,
+        3 => Direction::Northeast,
+        4 => Direction::North,
+        5 => Direction::Northwest,
+        6 => Direction::West,
+        7 => Direction::Southwest,
+        8 => Direction::South,
+        _ => panic!("Illegal angle: {}", angle)
     }
 }
 
 const TIMER_MS: u16 = 100;
 const TIMER_S: f32 = 0.1;
-const SPEED: f32 = 1.0;  // TODO
 
 #[entry]
 fn main() -> ! {
@@ -225,16 +220,11 @@ fn main() -> ! {
                 }
             }
 
-            let mag_dir = angle_to_direction(mag_to_angle(last_mag));
+            let angle = (mag_to_angle(last_mag) + 360.0) % 360.0;
+            let mag_dir = angle_to_direction(angle);
 
             leds.iter_mut().for_each(|led| led.off());
             leds[mag_dir].on();
-            leds[if timer_cycle == 0 {
-                Direction::North
-            } else {
-                Direction::South
-            }]
-            .on();
 
             futures::future::ready(())
         }),
